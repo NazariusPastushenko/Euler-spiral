@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Крива Ейлера — 20×20 координатна площина</title>
+  <style>
+    :root{--bg:#f6f8fb;--panel:#fff;--accent:#2563eb}
+    body{font-family:Inter,Segoe UI,Roboto,Arial;display:flex;gap:18px;padding:18px;background:var(--bg);color:#111}
+    .panel{background:var(--panel);padding:12px;border-radius:10px;box-shadow:0 6px 18px rgba(16,24,40,0.08);width:360px}
+    h1{font-size:18px;margin:0 0 8px}
+    label{display:block;font-size:13px;margin-top:10px}
+    input[type=number], input[type=text], select{width:100%;padding:8px;border-radius:6px;border:1px solid #d1d5db;font-size:14px}
+    .row{display:flex;gap:8px}
+    .row>div{flex:1}
+    button{margin-top:12px;padding:10px 12px;border-radius:8px;border:0;background:var(--accent);color:white;font-weight:600;cursor:pointer}
+    canvas{background:white;border-radius:8px;box-shadow:0 6px 18px rgba(16,24,40,0.06)}
+    .small{font-size:13px;color:#374151}
+    .actions{display:flex;gap:8px}
+    .muted{color:#6b7280;font-size:13px}
+    footer{margin-top:8px;font-size:12px;color:#6b7280}
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h1>Параметри кривої Ейлера (клотоїда)</h1>
+    <div class="small">Координатна площина: 20 × 20 (від -10 до 10 по обох осях)</div>
+
+    <label>Коефіцієнт a (k = a·s)</label>
+    <input id="a" type="number" step="0.01" value="0.5" />
+
+    <div class="row">
+      <div>
+        <label>Макс. довжина дуги s<sub>max</sub></label>
+        <input id="smax" type="number" step="0.1" value="10" />
+      </div>
+      <div>
+        <label>Кількість точок</label>
+        <input id="npoints" type="number" step="1" value="2000" />
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Початковий X (x₀)</label>
+        <input id="x0" type="number" step="0.1" value="0" />
+      </div>
+      <div>
+        <label>Початковий Y (y₀)</label>
+        <input id="y0" type="number" step="0.1" value="0" />
+      </div>
+    </div>
+
+    <label>Початковий кут дотичної θ₀ (градуси)</label>
+    <input id="theta0" type="number" step="1" value="0" />
+
+    <label>Масштаб (пікселів на одиницю)</label>
+    <input id="scale" type="number" step="1" value="30" />
+
+    <div class="row">
+      <div>
+        <label>Колір кривої</label>
+        <input id="color" type="text" value="#d63384" />
+      </div>
+      <div>
+        <label>Ширина лінії</label>
+        <input id="linewidth" type="number" value="2" />
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="drawBtn">Намалювати</button>
+      <button id="clearBtn" style="background:#6b7280">Очистити</button>
+      <button id="downloadBtn" style="background:#059669">Завантажити PNG</button>
+    </div>
+
+    <footer>Формули: θ(s)=θ₀ + (a·s²)/2, x(s)=x₀ + ∫₀ˢ cos(θ(u)) du, y(s)=y₀ + ∫₀ˢ sin(θ(u)) du</footer>
+  </div>
+
+  <div style="flex:1;display:flex;flex-direction:column;gap:8px;align-items:center">
+    <canvas id="canvas" width="700" height="700"></canvas>
+    <div class="muted">Координати від -10 до 10 по обох осях (20×20). Масштаб та початкова точка можна змінити.</div>
+  </div>
+
+<script>
+(function(){
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+
+  const aInput = document.getElementById('a');
+  const smaxInput = document.getElementById('smax');
+  const npointsInput = document.getElementById('npoints');
+  const x0Input = document.getElementById('x0');
+  const y0Input = document.getElementById('y0');
+  const theta0Input = document.getElementById('theta0');
+  const scaleInput = document.getElementById('scale');
+  const colorInput = document.getElementById('color');
+  const linewidthInput = document.getElementById('linewidth');
+  const drawBtn = document.getElementById('drawBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+
+  // Coordinate system: logical coordinates run from -10..10 in both axes
+  function clear(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    drawGrid();
+  }
+
+  function drawGrid(){
+    const w = canvas.width, h = canvas.height;
+    ctx.save();
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0,0,w,h);
+
+    // axes center
+    const cx = w/2, cy = h/2;
+
+    // draw grid lines for integer coordinates from -10..10
+    ctx.strokeStyle = '#e6eef8';
+    ctx.lineWidth = 1;
+    for(let i=-10;i<=10;i++){
+      const x = cx + i * parseFloat(scaleInput.value);
+      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
+    }
+    for(let j=-10;j<=10;j++){
+      const y = cy - j * parseFloat(scaleInput.value);
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
+    }
+
+    // axes
+    ctx.strokeStyle = '#111827';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(w,cy); ctx.stroke(); // x-axis
+    ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,h); ctx.stroke(); // y-axis
+
+    // ticks and labels
+    ctx.fillStyle = '#111827';
+    ctx.font = '12px sans-serif';
+    for(let i=-10;i<=10;i++){
+      const x = cx + i * parseFloat(scaleInput.value);
+      ctx.fillText(i.toString(), x+2, cy+14);
+    }
+    for(let j=-10;j<=10;j++){
+      if(j===0) continue;
+      const y = cy - j * parseFloat(scaleInput.value);
+      ctx.fillText(j.toString(), cx+6, y-2);
+    }
+
+    ctx.restore();
+  }
+
+  // numerical integration using simple composite Simpson / or rectangle method
+  function computeEulerPoints(a, sMax, nPoints, x0, y0, theta0){
+    // We'll do cumulative numerical integration with small step h = sMax/(nPoints-1)
+    const pts = [];
+    const h = sMax / Math.max(1, nPoints-1);
+    let x = x0, y = y0;
+    pts.push({s:0,x,y});
+    // use simple midpoint (or trapezoid) for accuracy
+    for(let i=1;i<nPoints;i++){
+      const sPrev = (i-1)*h;
+      const sCurr = i*h;
+      // integrate from sPrev to sCurr using midpoint rule
+      const sm = 0.5*(sPrev + sCurr);
+      const theta_sm = theta0 + (a * sm*sm)/2.0;
+      const dx = Math.cos(theta_sm) * (sCurr - sPrev);
+      const dy = Math.sin(theta_sm) * (sCurr - sPrev);
+      x += dx; y += dy;
+      pts.push({s:sCurr,x,y});
+    }
+    return pts;
+  }
+
+  function worldToCanvas(xw, yw){
+    const w = canvas.width, h = canvas.height;
+    const cx = w/2, cy = h/2;
+    const scale = parseFloat(scaleInput.value);
+    const x = cx + xw * scale;
+    const y = cy - yw * scale;
+    return {x,y};
+  }
+
+  function drawCurve(points, options){
+    ctx.save();
+    ctx.lineWidth = options.lineWidth || 2;
+    ctx.strokeStyle = options.color || '#d63384';
+    ctx.beginPath();
+    for(let i=0;i<points.length;i++){
+      const c = worldToCanvas(points[i].x, points[i].y);
+      if(i===0) ctx.moveTo(c.x,c.y); else ctx.lineTo(c.x,c.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawBtn.addEventListener('click', ()=>{
+    // read inputs
+    const a = parseFloat(aInput.value);
+    const smax = Math.max(0, parseFloat(smaxInput.value));
+    const npoints = Math.max(10, parseInt(npointsInput.value));
+    const x0 = parseFloat(x0Input.value);
+    const y0 = parseFloat(y0Input.value);
+    const theta0deg = parseFloat(theta0Input.value);
+    const theta0 = theta0deg * Math.PI / 180.0;
+
+    // clamp: ensure curve fits reasonably
+    clear();
+
+    // compute points in curve-param s in [0,smax]
+    const ptsLocal = computeEulerPoints(a, smax, npoints, x0, y0, theta0);
+
+    // draw curve
+    drawCurve(ptsLocal, {color: colorInput.value, lineWidth: parseFloat(linewidthInput.value)});
+  });
+
+  clearBtn.addEventListener('click', ()=> clear());
+
+  downloadBtn.addEventListener('click', ()=>{
+    const url = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url; a.download = 'euler_spiral_20x20.png';
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+
+  // initial draw
+  clear();
+
+})();
+</script>
+</body>
+</html>
